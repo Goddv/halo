@@ -42,14 +42,14 @@
 ## 📸 Screenshots
 
 <p align="center">
-  <strong>Active Prompt with Git Status and Running Command</strong><br>
-  <img src="https://github.com/Goddv/halo/blob/main/.github/assets/input_file_0.png?raw=true" alt="Halo Shell Active Prompt">
+  <strong>Welcome screen</strong><br>
+  <img src="https://github.com/Goddv/halo/blob/master/assets/input_file_0.png" alt="Halo Shell Active Prompt">
 </p>
 
 <p align="center">
   <strong>History Preview Mode</strong><br>
   <em>Scrolling up highlights previous commands and their output, turning the input area into a preview pane.</em><br>
-  <img src="https://github.com/Goddv/halo/blob/main/.github/assets/input_file_1.png?raw=true" alt="Halo Shell History Preview">
+  <img src="https://github.com/Goddv/halo/blob/master/assets/input_file_1.png" alt="Halo Shell History Preview">
 </p>
 
 
