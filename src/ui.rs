@@ -108,7 +108,7 @@ fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
     }
 }
 
-fn build_log_block(log: &CommandLog) -> Vec<Line> {
+fn build_log_block(log: &CommandLog) -> Vec<Line<'_>> {
     let mut lines = Vec::new();
     let is_empty_prompt = log.command.is_empty() && log.output.is_empty();
 

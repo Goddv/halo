@@ -3,7 +3,7 @@
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt; // For checking executable permission on Unix-like systems
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 // An enum to determine what kind of paths we should suggest.
 #[derive(PartialEq)]
