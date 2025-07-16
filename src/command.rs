@@ -79,7 +79,7 @@ impl CommandManager {
             let mut reader = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = reader.next_line().await {
                 if tx_err
-                    .send(CommandUpdate::NewLine(format!("[stderr] {}", line)))
+                    .send(CommandUpdate::NewLine(format!("[stderr] {line}")))
                     .is_err()
                 {
                     break;
@@ -89,20 +89,17 @@ impl CommandManager {
 
         let tx_finish = tx;
         tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    status = child.wait() => {
-                        // Command finished on its own
-                        let _ = status;
-                        break;
-                    }
-                    _ = &mut kill_rx => {
-                        // Kill signal received
-                        let _ = child.kill().await;
-                        break;
-                    }
+            tokio::select! {
+                status = child.wait() => {
+                    // Command finished on its own
+                    let _ = status;
+                }
+                _ = &mut kill_rx => {
+                    // Kill signal received
+                    let _ = child.kill().await;
                 }
             }
+
             let _ = tx_finish.send(CommandUpdate::Finished);
         });
 

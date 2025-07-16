@@ -93,12 +93,12 @@ fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
         );
 
         // Highlight the active preview block if it matches our calculated index.
-        if let Some(active_idx) = active_log_index {
-            if i == active_idx {
-                for line in &mut block_lines {
-                    for span in &mut line.spans {
-                        span.style = span.style.fg(COLOR_ACCENT);
-                    }
+        if let Some(active_idx) = active_log_index
+            && i == active_idx
+        {
+            for line in &mut block_lines {
+                for span in &mut line.spans {
+                    span.style = span.style.fg(COLOR_ACCENT);
                 }
             }
         }

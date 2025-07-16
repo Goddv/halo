@@ -42,7 +42,7 @@ async fn main() -> AppResult<()> {
     terminal.show_cursor()?;
 
     if let Err(err) = result {
-        println!("Error: {:?}", err);
+        println!("Error: {err:?}");
     }
 
     Ok(())

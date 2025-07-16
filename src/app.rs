@@ -66,7 +66,7 @@ impl App {
                 .state
                 .command_log
                 .last()
-                .map_or(false, |l| l.command.is_empty() && l.output.is_empty());
+                .is_some_and(|l| l.command.is_empty() && l.output.is_empty());
             if !last_was_empty {
                 self.state.command_log.push(CommandLog::new(
                     "".into(),
@@ -79,12 +79,7 @@ impl App {
         }
 
         self.state.add_log_entry(input.clone(), current_cwd);
-        if self
-            .state
-            .history
-            .last()
-            .map_or(true, |last| last != &input)
-        {
+        if self.state.history.last() != Some(&input) {
             self.state.history.push(input.clone());
         }
 
@@ -117,7 +112,7 @@ impl App {
                     &self.state.cwd,
                     self.command_update_tx.clone(),
                 ) {
-                    self.state.append_to_last_log(format!("{}: {}", cmd, e));
+                    self.state.append_to_last_log(format!("{cmd}: {e}"));
                     self.state.finish_last_log();
                 }
                 return;
@@ -135,7 +130,7 @@ impl App {
         };
 
         if let Err(e) = std::env::set_current_dir(&new_dir) {
-            self.state.append_to_last_log(format!("cd: {}", e));
+            self.state.append_to_last_log(format!("cd: {e}"));
         } else if let Ok(cwd) = std::env::current_dir() {
             self.state.cwd = cwd;
         }
@@ -174,5 +169,5 @@ fn get_git_branch(path: &Path) -> Option<String> {
 
     let icon = if is_dirty { " " } else { " ✔" }; // nf-fa-warning, nf-fa-check
 
-    Some(format!("{}{}", shorthand, icon))
+    Some(format!("{shorthand}{icon}"))
 }

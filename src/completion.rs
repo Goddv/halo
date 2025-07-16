@@ -130,12 +130,12 @@ impl CompletionState {
                         if let Ok(metadata) = entry.metadata() {
                             // On Unix, check the executable permission bit.
                             let is_executable = metadata.permissions().mode() & 0o111 != 0;
-                            if metadata.is_file() && is_executable {
-                                if let Some(name) = entry.file_name().to_str() {
-                                    if name.starts_with(partial_cmd) {
-                                        commands.insert(name.to_string());
-                                    }
-                                }
+                            if metadata.is_file()
+                                && is_executable
+                                && let Some(name) = entry.file_name().to_str()
+                                && name.starts_with(partial_cmd)
+                            {
+                                commands.insert(name.to_string());
                             }
                         }
                     }
@@ -152,11 +152,11 @@ impl CompletionState {
     fn suggest_paths(&self, partial_path: &str, cwd: &Path, filter: PathFilter) -> Vec<String> {
         // Handle home directory expansion
         let mut path_to_complete = PathBuf::new();
-        if partial_path.starts_with('~') {
+        if let Some(after_home) = partial_path.strip_prefix('~') {
             if let Some(home) = dirs::home_dir() {
                 path_to_complete.push(home);
                 // Add the rest of the path, skipping the tilde
-                path_to_complete.push(&partial_path[1..]);
+                path_to_complete.push(after_home);
             }
         } else {
             path_to_complete.push(partial_path);
