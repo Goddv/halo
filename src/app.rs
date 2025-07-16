@@ -1,6 +1,6 @@
 // src/app.rs
 
-use crate::command::{CommandManager, CommandUpdate, CommandLog};
+use crate::command::{CommandLog, CommandManager, CommandUpdate};
 use crate::error::AppResult;
 use crate::event::EventHandler;
 use crate::state::State;
@@ -39,7 +39,7 @@ impl App {
         while !self.state.should_quit {
             self.process_command_updates();
             self.update_git_info();
-            
+
             if self.state.needs_redraw {
                 terminal.draw(|frame| {
                     ui::draw(frame, &mut self.state);
@@ -62,15 +62,29 @@ impl App {
         let current_cwd = self.state.cwd.clone();
 
         if input.is_empty() {
-            let last_was_empty = self.state.command_log.last().map_or(false, |l| l.command.is_empty() && l.output.is_empty());
+            let last_was_empty = self
+                .state
+                .command_log
+                .last()
+                .map_or(false, |l| l.command.is_empty() && l.output.is_empty());
             if !last_was_empty {
-                self.state.command_log.push(CommandLog::new("".into(), "".into(), false, current_cwd));
+                self.state.command_log.push(CommandLog::new(
+                    "".into(),
+                    "".into(),
+                    false,
+                    current_cwd,
+                ));
             }
             return;
         }
 
         self.state.add_log_entry(input.clone(), current_cwd);
-        if self.state.history.last().map_or(true, |last| last != &input) {
+        if self
+            .state
+            .history
+            .last()
+            .map_or(true, |last| last != &input)
+        {
             self.state.history.push(input.clone());
         }
 
@@ -80,7 +94,8 @@ impl App {
         let parts = match shlex::split(&input) {
             Some(parts) if !parts.is_empty() => parts,
             _ => {
-                self.state.append_to_last_log("Error: Mismatched quotes.".into());
+                self.state
+                    .append_to_last_log("Error: Mismatched quotes.".into());
                 self.state.finish_last_log();
                 return;
             }
@@ -92,7 +107,9 @@ impl App {
         match cmd.as_str() {
             "exit" => self.state.should_quit = true,
             "cd" => self.handle_cd(args),
-            "pwd" => self.state.append_to_last_log(self.state.cwd.display().to_string()),
+            "pwd" => self
+                .state
+                .append_to_last_log(self.state.cwd.display().to_string()),
             _ => {
                 if let Err(e) = self.command_manager.spawn_command(
                     cmd,
@@ -126,7 +143,8 @@ impl App {
 
     pub fn kill_command(&mut self) -> AppResult<()> {
         self.command_manager.kill_running_command()?;
-        self.state.append_to_last_log("[Process killed by user]".into());
+        self.state
+            .append_to_last_log("[Process killed by user]".into());
         Ok(())
     }
 
@@ -146,12 +164,12 @@ fn get_git_branch(path: &Path) -> Option<String> {
     let repo = git2::Repository::discover(path).ok()?;
     let head = repo.head().ok()?;
     let shorthand = head.shorthand()?;
-    
+
     // Check for dirty status
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true).recurse_untracked_dirs(true);
     let statuses = repo.statuses(Some(&mut opts)).ok()?;
-    
+
     let is_dirty = statuses.iter().any(|s| s.status() != git2::Status::CURRENT);
 
     let icon = if is_dirty { " " } else { " ✔" }; // nf-fa-warning, nf-fa-check
