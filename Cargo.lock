@@ -213,7 +213,11 @@ dependencies = [
  "document-features",
  "mio",
  "parking_lot",
+<<<<<<< HEAD
  "rustix 1.0.7",
+=======
+ "rustix 1.0.8",
+>>>>>>> ab6cf71de6922883d808af26a54ea9e0922d0bd1
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -1144,15 +1148,25 @@ dependencies = [
 
 [[package]]
 name = "rustix"
+<<<<<<< HEAD
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c71e83d6afe7ff64890ec6b71d6a69bb8a610ab78ce364b3352876bb4c801266"
+=======
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11181fbabf243db407ef8df94a6ce0b2f9a733bd8be4ad02b4eda9602296cac8"
+>>>>>>> ab6cf71de6922883d808af26a54ea9e0922d0bd1
 dependencies = [
  "bitflags",
  "errno",
  "libc",
  "linux-raw-sys 0.9.4",
+<<<<<<< HEAD
  "windows-sys 0.59.0",
+=======
+ "windows-sys 0.60.2",
+>>>>>>> ab6cf71de6922883d808af26a54ea9e0922d0bd1
 ]
 
 [[package]]

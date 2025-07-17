@@ -28,7 +28,7 @@ impl EventHandler {
             }
             return Ok(());
         }
-        
+
         if matches!(key.code, KeyCode::Char(_) | KeyCode::Backspace) {
             app.state.exit_preview_mode();
         }
@@ -46,7 +46,11 @@ impl EventHandler {
             KeyCode::Tab | KeyCode::Down => app.state.completion_state.next_suggestion(),
             KeyCode::BackTab | KeyCode::Up => app.state.completion_state.previous_suggestion(),
             KeyCode::Enter => {
-                if let Some((new_input, new_cursor)) = app.state.completion_state.apply_completion(&app.state.input_buffer) {
+                if let Some((new_input, new_cursor)) = app
+                    .state
+                    .completion_state
+                    .apply_completion(&app.state.input_buffer)
+                {
                     app.state.input_buffer = new_input;
                     app.state.cursor_position = new_cursor;
                 }
@@ -75,8 +79,12 @@ impl EventHandler {
                 let (input, cwd) = (app.state.input_buffer.clone(), app.state.cwd.clone());
                 app.state.completion_state.start_completion(&input, &cwd);
             }
-            KeyCode::PageUp => app.state.scroll_offset = (app.state.scroll_offset + 5).min(max_scroll),
-            KeyCode::PageDown => app.state.scroll_offset = app.state.scroll_offset.saturating_sub(5),
+            KeyCode::PageUp => {
+                app.state.scroll_offset = (app.state.scroll_offset + 5).min(max_scroll)
+            }
+            KeyCode::PageDown => {
+                app.state.scroll_offset = app.state.scroll_offset.saturating_sub(5)
+            }
             _ => {}
         }
     }
@@ -96,8 +104,12 @@ impl EventHandler {
     }
 
     fn navigate_history_up(&self, app: &mut App) {
-        if app.state.scroll_offset > 0 { return; } 
-        if app.state.history.is_empty() { return; }
+        if app.state.scroll_offset > 0 {
+            return;
+        }
+        if app.state.history.is_empty() {
+            return;
+        }
         let new_index = match app.state.history_index {
             Some(idx) => idx.saturating_sub(1),
             None => app.state.history.len() - 1,
@@ -108,8 +120,12 @@ impl EventHandler {
     }
 
     fn navigate_history_down(&self, app: &mut App) {
-        if app.state.scroll_offset > 0 { return; } 
-        if app.state.history.is_empty() { return; }
+        if app.state.scroll_offset > 0 {
+            return;
+        }
+        if app.state.history.is_empty() {
+            return;
+        }
         match app.state.history_index {
             Some(idx) if idx < app.state.history.len() - 1 => {
                 let new_index = idx + 1;

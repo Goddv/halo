@@ -12,7 +12,7 @@ use app::App;
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
 use std::io;
@@ -42,7 +42,7 @@ async fn main() -> AppResult<()> {
     terminal.show_cursor()?;
 
     if let Err(err) = result {
-        println!("Error: {:?}", err);
+        println!("Error: {err:?}");
     }
 
     Ok(())
