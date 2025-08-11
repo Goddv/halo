@@ -284,7 +284,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &State) {
         Span::styled(state.cwd.display().to_string(), Style::new().fg(theme.accent)),
         Span::raw("  |  "),
         Span::styled("📄 ", Style::new().fg(theme.accent)),
-        Span::styled(format!("{}/{}", pos, total_logs), Style::new().fg(theme.accent)),
+        Span::styled(format!("{}/{} ", pos, total_logs), Style::new().fg(theme.accent)),
     ]);
     let cwd = Paragraph::new(right_text).alignment(Alignment::Right);
     frame.render_widget(brand, status_layout[0]);
@@ -314,7 +314,16 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
             ]),
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
             Style::new().fg(theme.accent),
-            build_decorated_title("[[[ HISTORY PREVIEW ]]]".to_string(), theme),
+            {
+                const DECOR: &str = "────────────";
+                Line::from(vec![
+                    Span::styled(DECOR, Style::new().fg(theme.accent)),
+                    Span::styled(
+                        "[[[ HISTORY PREVIEW ]]]",
+                        Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
+                    ),
+                ])
+            },
         )
     } else {
         (
@@ -327,7 +336,16 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
             ]),
             Style::default(),
             Style::new().fg(theme.primary),
-            build_decorated_title(format!("[[[ {} ]]]", state.username), theme),
+            {
+                const DECOR: &str = "────────────";
+                Line::from(vec![
+                    Span::styled(DECOR, Style::new().fg(theme.primary)),
+                    Span::styled(
+                        format!("[ {} ]", state.username),
+                        Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+                    ),
+                ])
+            },
         )
     };
 
@@ -340,14 +358,6 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
     );
 
     frame.render_widget(input_paragraph, area);
-}
-
-fn build_decorated_title(inner: String, theme: &Theme) -> Line<'static> {
-    const DECOR: &str = "───────────────────"; // fixed-length decoration
-    let left = Span::styled(DECOR.to_string(), Style::new().fg(theme.primary));
-    //let space = Span::raw(" ".to_string());
-    let title = Span::styled(inner, Style::new().fg(theme.accent).add_modifier(Modifier::BOLD));
-    Line::from(vec![left, title])
 }
 
 fn render_completion_popup(frame: &mut Frame, area: Rect, state: &mut State) {
