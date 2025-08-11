@@ -1,5 +1,6 @@
 // src/completion.rs
 
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt; // For checking executable permission on Unix-like systems
@@ -12,7 +13,7 @@ enum PathFilter {
     DirectoriesOnly,
 }
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct CompletionState {
     pub active: bool,
     pub suggestions: Vec<String>,

@@ -18,7 +18,7 @@
   </a>
   <!-- Version Badge -->
   <a href="#">
-    <img src="https://img.shields.io/badge/version-0.1.0-brightgreen" alt="Version">
+    <img src="https://img.shields.io/badge/version-0.2.0-brightgreen" alt="Version">
   </a>
   <!-- Platform Badge -->
   <a href="#">

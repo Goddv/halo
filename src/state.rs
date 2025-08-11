@@ -3,7 +3,165 @@
 use crate::command::CommandLog;
 use crate::completion::CompletionState;
 use crate::error::AppResult;
+use ratatui::style::Color;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io;
 use std::path::PathBuf;
+use std::time::Instant;
+#[derive(Clone)]
+pub struct Theme {
+    pub primary: Color,
+    pub accent: Color,
+    pub warn: Color,
+    pub error: Color,
+    pub fg: Color,
+    pub bg: Color,
+    pub comment: Color,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self {
+            primary: Color::Rgb(0, 184, 255),
+            accent: Color::Rgb(255, 6, 119),
+            warn: Color::Rgb(255, 255, 0),
+            error: Color::Rgb(255, 85, 85),
+            fg: Color::Rgb(229, 233, 240),
+            bg: Color::Rgb(22, 24, 33),
+            comment: Color::Rgb(76, 86, 106),
+        }
+    }
+}
+
+impl Theme {
+    fn parse_color(input: &str) -> Option<Color> {
+        let s = input.trim();
+        // Hex: #RRGGBB or #RGB
+        if let Some(hex) = s.strip_prefix('#') {
+            if hex.len() == 6 {
+                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                return Some(Color::Rgb(r, g, b));
+            } else if hex.len() == 3 {
+                let r = u8::from_str_radix(&hex[0..1], 16).ok()?;
+                let g = u8::from_str_radix(&hex[1..2], 16).ok()?;
+                let b = u8::from_str_radix(&hex[2..3], 16).ok()?;
+                let r = (r << 4) | r;
+                let g = (g << 4) | g;
+                let b = (b << 4) | b;
+                return Some(Color::Rgb(r, g, b));
+            }
+        }
+        // rgb(r,g,b)
+        if let Some(body) = s.strip_prefix("rgb(").and_then(|t| t.strip_suffix(')')) {
+            let parts: Vec<_> = body.split(',').map(|x| x.trim()).collect();
+            if parts.len() == 3 {
+                let r: u8 = parts[0].parse().ok()?;
+                let g: u8 = parts[1].parse().ok()?;
+                let b: u8 = parts[2].parse().ok()?;
+                return Some(Color::Rgb(r, g, b));
+            }
+        }
+        // 8-bit indexed: ansi:N or index:N
+        if let Some(num) = s.strip_prefix("ansi:").or_else(|| s.strip_prefix("index:")) {
+            if let Ok(v) = num.parse::<u8>() {
+                return Some(Color::Indexed(v));
+            }
+        }
+        // Named colors
+        let name = s.to_ascii_lowercase();
+        let named = match name.as_str() {
+            "black" => Color::Black,
+            "white" => Color::White,
+            "gray" | "grey" => Color::Gray,
+            "red" => Color::Red,
+            "green" => Color::Green,
+            "yellow" => Color::Yellow,
+            "blue" => Color::Blue,
+            "magenta" | "purple" => Color::Magenta,
+            "cyan" => Color::Cyan,
+            _ => return None,
+        };
+        Some(named)
+    }
+
+    pub fn from_table(tbl: &toml::value::Table, base: Theme) -> Theme {
+        let mut t = base;
+        if let Some(v) = tbl.get("primary").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.primary = c;
+            }
+        }
+        if let Some(v) = tbl.get("accent").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.accent = c;
+            }
+        }
+        if let Some(v) = tbl.get("warn").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.warn = c;
+            }
+        }
+        if let Some(v) = tbl.get("error").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.error = c;
+            }
+        }
+        if let Some(v) = tbl.get("fg").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.fg = c;
+            }
+        }
+        if let Some(v) = tbl.get("bg").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.bg = c;
+            }
+        }
+        if let Some(v) = tbl.get("comment").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.comment = c;
+            }
+        }
+        t
+    }
+
+    pub fn from_name(name: &str) -> Theme {
+        match name {
+            // A vibrant cyberpunk + nord fusion (current default)
+            "cyber-nord" => Theme::default(),
+            "dracula" => Theme {
+                primary: Color::Rgb(98, 114, 164),
+                accent: Color::Rgb(255, 121, 198),
+                warn: Color::Rgb(241, 250, 140),
+                error: Color::Rgb(255, 85, 85),
+                fg: Color::Rgb(248, 248, 242),
+                bg: Color::Rgb(40, 42, 54),
+                comment: Color::Rgb(98, 114, 164),
+            },
+            "gruvbox-dark" => Theme {
+                primary: Color::Rgb(250, 189, 47),
+                accent: Color::Rgb(204, 36, 29),
+                warn: Color::Rgb(250, 189, 47),
+                error: Color::Rgb(204, 36, 29),
+                fg: Color::Rgb(235, 219, 178),
+                bg: Color::Rgb(29, 32, 33),
+                comment: Color::Rgb(146, 131, 116),
+            },
+            "one-dark" => Theme {
+                primary: Color::Rgb(97, 175, 239),
+                accent: Color::Rgb(198, 120, 221),
+                warn: Color::Rgb(229, 192, 123),
+                error: Color::Rgb(224, 108, 117),
+                fg: Color::Rgb(171, 178, 191),
+                bg: Color::Rgb(40, 44, 52),
+                comment: Color::Rgb(92, 99, 112),
+            },
+            _ => Theme::default(),
+        }
+    }
+}
 
 const HISTORY_LIMIT: usize = 100;
 
@@ -20,19 +178,25 @@ pub struct State {
     pub command_log: Vec<CommandLog>,
     pub scroll_offset: usize,
     pub completion_state: CompletionState,
+    pub aliases: std::collections::HashMap<String, String>,
+    // Reserved for future: drive highlight from state rather than recomputing
+    // pub active_preview_index: Option<usize>,
+    _last_start_time: Option<Instant>,
+    pub theme: Theme,
+    pub theme_name: String,
 }
 
 impl State {
     pub fn new() -> AppResult<Self> {
         let cwd = std::env::current_dir()?;
-        Ok(Self {
+        let mut state = Self {
             should_quit: false,
             needs_redraw: true,
             username: users::get_current_username()
                 .and_then(|name| name.into_string().ok())
                 .unwrap_or_else(|| "user".to_string()),
             cwd: cwd.clone(),
-            git_branch: None, // Will be updated by the app loop
+            git_branch: None,
             input_buffer: String::new(),
             cursor_position: 0,
             history: Vec::new(),
@@ -41,11 +205,19 @@ impl State {
                 "".into(),
                 "Welcome to Halo! A modern shell for a modern age.".into(),
                 false,
-                cwd, // Store the CWD with the welcome message
+                cwd,
             )],
             scroll_offset: 0,
             completion_state: CompletionState::new(),
-        })
+            aliases: Default::default(),
+            _last_start_time: None,
+            theme: Theme::default(),
+            theme_name: "cyber-nord".to_string(),
+        };
+        state.load_history()?;
+        state.load_config();
+        let _ = state.load_session();
+        Ok(state)
     }
 
     pub fn move_cursor_left(&mut self) {
@@ -53,7 +225,9 @@ impl State {
     }
 
     pub fn move_cursor_right(&mut self) {
-        self.cursor_position = self.cursor_position.min(self.input_buffer.len());
+        if self.cursor_position < self.input_buffer.len() {
+            self.cursor_position += 1;
+        }
     }
 
     pub fn insert_char(&mut self, c: char) {
@@ -76,7 +250,9 @@ impl State {
         self.command_log
             .push(CommandLog::new(command, String::new(), true, cwd));
         if self.command_log.len() > HISTORY_LIMIT {
-            self.command_log.remove(0);
+            // Keep the newest HISTORY_LIMIT entries by draining from the front
+            let excess = self.command_log.len() - HISTORY_LIMIT;
+            self.command_log.drain(0..excess);
         }
     }
 
@@ -95,5 +271,134 @@ impl State {
             last.is_running = false;
             self.needs_redraw = true;
         }
+    }
+
+    // runtime fields for duration tracking
+    #[allow(dead_code)]
+    fn now() -> Instant {
+        Instant::now()
+    }
+    pub fn mark_last_log_started(&mut self) {
+        // Store start time in a sidecar map keyed by index if needed; easiest is to stash in output
+        // but we will track via a local Instant until finish and compute delta. Use a hidden field on State.
+        self._last_start_time = Some(Self::now());
+    }
+
+    pub fn finish_last_log_with_result(&mut self, exit_code: Option<i32>) {
+        if let Some(last) = self.command_log.last_mut() {
+            last.is_running = false;
+            last.exit_code = exit_code;
+            if let Some(start) = self._last_start_time.take() {
+                let elapsed = start.elapsed().as_millis();
+                last.duration_ms = Some(elapsed);
+            }
+            self.needs_redraw = true;
+        }
+    }
+
+    fn history_path() -> Option<std::path::PathBuf> {
+        dirs::config_dir().map(|mut p| {
+            p.push("halo/history");
+            p
+        })
+    }
+
+    pub fn load_history(&mut self) -> AppResult<()> {
+        if let Some(path) = Self::history_path() {
+            if let Ok(file) = fs::File::open(&path) {
+                let reader = io::BufReader::new(file);
+                self.history = serde_json::from_reader(reader).unwrap_or_default();
+            }
+        }
+        Ok(())
+    }
+
+    pub fn save_history(&self) -> AppResult<()> {
+        if let Some(path) = Self::history_path() {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let file = fs::File::create(&path)?;
+            serde_json::to_writer_pretty(file, &self.history)?;
+        }
+        Ok(())
+    }
+
+    pub fn load_config(&mut self) {
+        // Read minimal halo.toml from config dir, parse aliases table if present
+        if let Some(mut path) = dirs::config_dir() {
+            path.push("halo/halo.toml");
+            if let Ok(text) = fs::read_to_string(path) {
+                if let Ok(value) = text.parse::<toml::Value>() {
+                    if let Some(aliases) = value.get("aliases").and_then(|v| v.as_table()) {
+                        self.aliases = aliases
+                            .iter()
+                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                            .collect();
+                    }
+                    if let Some(theme_name) = value.get("theme").and_then(|v| v.as_str()) {
+                        self.theme = Theme::from_name(theme_name);
+                        self.theme_name = theme_name.to_string();
+                    } else if let Some(theme_tbl) = value.get("theme").and_then(|v| v.as_table()) {
+                        self.theme = Theme::from_table(theme_tbl, self.theme.clone());
+                        self.theme_name = "custom".to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    fn session_path() -> Option<std::path::PathBuf> {
+        dirs::config_dir().map(|mut p| {
+            p.push("halo/session.json");
+            p
+        })
+    }
+
+    pub fn load_session(&mut self) -> AppResult<()> {
+        if let Some(path) = Self::session_path() {
+            if let Ok(file) = fs::File::open(&path) {
+                let reader = io::BufReader::new(file);
+                #[derive(Deserialize)]
+                struct Session {
+                    last_cwd: String,
+                    last_theme_name: Option<String>,
+                }
+                if let Ok(session) = serde_json::from_reader::<_, Session>(reader) {
+                    let candidate = PathBuf::from(session.last_cwd);
+                    if candidate.is_dir() {
+                        if let Err(_e) = std::env::set_current_dir(&candidate) {
+                            // ignore failure, keep current cwd
+                        }
+                        self.cwd = candidate;
+                    }
+                    if let Some(name) = session.last_theme_name {
+                        self.theme = Theme::from_name(&name);
+                        self.theme_name = name;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn save_session(&self) -> AppResult<()> {
+        if let Some(path) = Self::session_path() {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            #[derive(Serialize)]
+            struct Session {
+                last_cwd: String,
+                last_theme_name: String,
+            }
+            let data = Session {
+                last_cwd: self.cwd.to_string_lossy().to_string(),
+                last_theme_name: self.theme_name.clone(),
+            };
+            let file = fs::File::create(&path)?;
+            serde_json::to_writer_pretty(file, &data)?;
+        }
+        Ok(())
     }
 }

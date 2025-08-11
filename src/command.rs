@@ -1,6 +1,8 @@
 // src/command.rs
 
 use crate::error::AppResult;
+// no serde types used here anymore
+use anyhow;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -11,7 +13,7 @@ use tokio::sync::oneshot;
 #[derive(Debug)]
 pub enum CommandUpdate {
     NewLine(String),
-    Finished,
+    Finished(Option<i32>),
 }
 
 #[derive(Clone, Debug)]
@@ -20,6 +22,8 @@ pub struct CommandLog {
     pub output: String,
     pub is_running: bool,
     pub cwd: PathBuf,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<u128>,
 }
 
 impl CommandLog {
@@ -29,6 +33,8 @@ impl CommandLog {
             output,
             is_running,
             cwd,
+            exit_code: None,
+            duration_ms: None,
         }
     }
 }
@@ -58,8 +64,14 @@ impl CommandManager {
             .kill_on_drop(true)
             .spawn()?;
 
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout for command: {cmd}"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr for command: {cmd}"))?;
 
         let (kill_tx, mut kill_rx) = oneshot::channel();
         self.kill_sender = Some(kill_tx);
@@ -88,19 +100,22 @@ impl CommandManager {
         });
 
         let tx_finish = tx;
+        #[allow(unused_mut)]
         tokio::spawn(async move {
             tokio::select! {
                 status = child.wait() => {
                     // Command finished on its own
-                    let _ = status;
+                    let code = status.ok().and_then(|s| s.code());
+                    let _ = tx_finish.send(CommandUpdate::Finished(code));
+                    return;
                 }
                 _ = &mut kill_rx => {
                     // Kill signal received
                     let _ = child.kill().await;
+                    let _ = tx_finish.send(CommandUpdate::Finished(None));
+                    return;
                 }
             }
-
-            let _ = tx_finish.send(CommandUpdate::Finished);
         });
 
         Ok(())
@@ -116,99 +131,4 @@ impl CommandManager {
     }
 }
 
-use std::fs;
-
-#[derive(Default)]
-pub struct CompletionState {
-    pub active: bool,
-    pub suggestions: Vec<String>,
-    pub selected_index: usize,
-}
-
-impl CompletionState {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn start_completion(&mut self, input_buffer: &str, cwd: &Path) {
-        self.active = true;
-        self.selected_index = 0;
-        self.suggestions = self.generate_suggestions(input_buffer, cwd);
-        if self.suggestions.is_empty() {
-            self.active = false;
-        }
-    }
-
-    pub fn stop_completion(&mut self) {
-        self.active = false;
-        self.suggestions.clear();
-    }
-
-    pub fn next_suggestion(&mut self) {
-        if !self.suggestions.is_empty() {
-            self.selected_index = (self.selected_index + 1) % self.suggestions.len();
-        }
-    }
-
-    pub fn previous_suggestion(&mut self) {
-        if !self.suggestions.is_empty() {
-            self.selected_index =
-                (self.selected_index + self.suggestions.len() - 1) % self.suggestions.len();
-        }
-    }
-
-    pub fn apply_completion(&self, current_input: &str) -> Option<(String, usize)> {
-        let suggestion = self.suggestions.get(self.selected_index)?;
-        let mut parts: Vec<&str> = current_input.split_whitespace().collect();
-        if !parts.is_empty() {
-            parts.pop();
-        }
-        parts.push(suggestion);
-        let mut new_input = parts.join(" ");
-
-        let is_dir = suggestion.ends_with('/');
-        if !is_dir {
-            new_input.push(' ');
-        }
-        let new_cursor_pos = new_input.len();
-
-        Some((new_input, new_cursor_pos))
-    }
-
-    fn generate_suggestions(&self, input_buffer: &str, cwd: &Path) -> Vec<String> {
-        let partial = input_buffer.split_whitespace().last().unwrap_or("");
-        let (base_dir, partial_name) = {
-            let p = Path::new(partial);
-            if partial.ends_with('/') || (p.is_dir() && partial.starts_with('/')) {
-                (p, "")
-            } else {
-                (
-                    p.parent().unwrap_or_else(|| Path::new("")),
-                    p.file_name().and_then(|s| s.to_str()).unwrap_or(""),
-                )
-            }
-        };
-
-        let search_path = cwd.join(base_dir);
-
-        if let Ok(entries) = fs::read_dir(&search_path) {
-            entries
-                .filter_map(Result::ok)
-                .filter_map(|entry| {
-                    let file_name_str = entry.file_name().to_string_lossy().to_string();
-                    if file_name_str.starts_with(partial_name) {
-                        let mut suggestion_path = base_dir.join(&file_name_str);
-                        if entry.path().is_dir() {
-                            suggestion_path.push("");
-                        }
-                        Some(suggestion_path.to_string_lossy().to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        } else {
-            Vec::new()
-        }
-    }
-}
+// Removed duplicate CompletionState. The canonical implementation lives in crate::completion.

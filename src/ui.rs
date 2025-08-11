@@ -1,24 +1,17 @@
 // src/ui.rs
 
 use crate::command::CommandLog;
-use crate::state::State;
+use crate::state::{State, Theme};
 use ratatui::{
     prelude::*,
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-// --- Theme Colors ---
-const COLOR_PRIMARY: Color = Color::Rgb(0, 184, 255); // Vibrant Cyan
-const COLOR_ACCENT: Color = Color::Rgb(255, 6, 119); // Vibrant Magenta
-const COLOR_WARN: Color = Color::Rgb(255, 255, 0); // Bright Yellow
-const COLOR_ERROR: Color = Color::Rgb(255, 85, 85); // Bright Red
-const COLOR_FG: Color = Color::Rgb(229, 233, 240); // Light Gray (almost white)
-const COLOR_BG: Color = Color::Rgb(22, 24, 33); // Very Dark Blue
-const COLOR_COMMENT: Color = Color::Rgb(76, 86, 106); // Grayish Blue
-const COLOR_DIM: Color = Color::Rgb(50, 56, 70); // Dimmed Blue/Gray
+// Colors are now taken from state's theme
 
 pub fn draw(frame: &mut Frame, state: &mut State) {
-    frame.render_widget(Block::new().bg(COLOR_BG), frame.area());
+    let theme = &state.theme;
+    frame.render_widget(Block::new().bg(theme.bg), frame.area());
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -51,12 +44,13 @@ pub fn draw(frame: &mut Frame, state: &mut State) {
 }
 
 fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
+    let theme = &state.theme;
     let output_block = Block::new()
         .borders(Borders::TOP)
-        .border_style(Style::new().fg(COLOR_COMMENT))
+        .border_style(Style::new().fg(theme.comment))
         .title(Span::styled(
             " [[[ CONSOLE LOG ]]] ",
-            Style::new().fg(COLOR_PRIMARY).add_modifier(Modifier::BOLD),
+            Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
         ));
 
     frame.render_widget(output_block, area);
@@ -67,30 +61,26 @@ fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
     });
     let mut current_y = inner_area.height;
 
-    // Determine which log entry should be highlighted
+    // Determine which log entry should be highlighted and where to end rendering (scrolling)
+    let total_logs = state.command_log.len();
     let active_log_index = if state.scroll_offset > 0 {
-        Some(state.command_log.len().saturating_sub(state.scroll_offset))
+        Some(
+            total_logs
+                .saturating_sub(1)
+                .saturating_sub(state.scroll_offset),
+        )
     } else {
         None
     };
 
-    // Always iterate through all logs in reverse. We don't skip anymore.
-    // The scrolling is achieved by only rendering what fits.
-    for (i, log) in state.command_log.iter().enumerate().rev() {
-        let mut block_lines = build_log_block(log);
+    // Implement real scrolling: start from an end index based on scroll_offset and render upwards.
+    let mut i_opt = total_logs
+        .checked_sub(1)
+        .map(|last| last.saturating_sub(state.scroll_offset));
+    while let Some(i) = i_opt {
+        let log = &state.command_log[i];
+        let mut block_lines = build_log_block(log, &state.theme);
         let block_height = block_lines.len() as u16;
-
-        if current_y < block_height {
-            break;
-        }
-
-        current_y = current_y.saturating_sub(block_height);
-        let block_area = Rect::new(
-            inner_area.x,
-            inner_area.y + current_y,
-            inner_area.width,
-            block_height,
-        );
 
         // Highlight the active preview block if it matches our calculated index.
         if let Some(active_idx) = active_log_index
@@ -98,36 +88,97 @@ fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
         {
             for line in &mut block_lines {
                 for span in &mut line.spans {
-                    span.style = span.style.fg(COLOR_ACCENT);
+                    span.style = span.style.fg(theme.accent);
                 }
             }
         }
 
-        let paragraph = Paragraph::new(block_lines);
-        frame.render_widget(paragraph, block_area);
+        if block_height <= current_y {
+            // Render full block
+            current_y = current_y.saturating_sub(block_height);
+            let block_area = Rect::new(
+                inner_area.x,
+                inner_area.y + current_y,
+                inner_area.width,
+                block_height,
+            );
+            let paragraph = Paragraph::new(block_lines).wrap(Wrap { trim: false });
+            frame.render_widget(paragraph, block_area);
+        } else {
+            // Render only the bottom part of the block that fits the remaining space.
+            let visible_height = current_y;
+            if visible_height == 0 {
+                break;
+            }
+            let total_lines = block_lines.len();
+            let start_index = total_lines.saturating_sub(visible_height as usize);
+            let visible_lines: Vec<Line> = block_lines[start_index..].to_vec();
+            let block_area =
+                Rect::new(inner_area.x, inner_area.y, inner_area.width, visible_height);
+            let paragraph = Paragraph::new(visible_lines).wrap(Wrap { trim: false });
+            frame.render_widget(paragraph, block_area);
+            break;
+        }
+
+        if i == 0 {
+            break;
+        }
+        i_opt = Some(i - 1);
+    }
+    // Draw a minimal scrollbar track on the right if there are logs
+    if total_logs > 0 {
+        let track_x = area.right().saturating_sub(1);
+        let track_area = Rect::new(track_x, inner_area.y, 1, inner_area.height);
+        // Compute thumb size relative to number of blocks (simple heuristic)
+        let min_thumb = 1u16;
+        let thumb_h = (inner_area.height / 4).max(min_thumb);
+        let max_scroll = total_logs.saturating_sub(1) as u16;
+        let scroll = state.scroll_offset.min(max_scroll as usize) as u16;
+        let top_space = if max_scroll == 0 {
+            0
+        } else {
+            (inner_area.height - thumb_h) * scroll / max_scroll.max(1)
+        };
+        let thumb_y = inner_area.y + top_space;
+        // track
+        frame.render_widget(Block::new().bg(theme.bg), track_area);
+        // thumb
+        let thumb = Paragraph::new(Span::styled("█", Style::new().fg(theme.primary)));
+        for y in 0..thumb_h {
+            let cell = Rect::new(track_x, thumb_y + y, 1, 1);
+            frame.render_widget(thumb.clone(), cell);
+        }
     }
 }
 
-fn build_log_block(log: &CommandLog) -> Vec<Line<'_>> {
+fn build_log_block<'a>(log: &'a CommandLog, theme: &'a Theme) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     let is_empty_prompt = log.command.is_empty() && log.output.is_empty();
 
     if is_empty_prompt && !log.is_running {
         lines.push(Line::from(vec![
-            Span::styled("╭─ ", Style::new().fg(COLOR_COMMENT)),
-            Span::styled("❯", Style::new().fg(COLOR_PRIMARY)),
+            Span::styled("╭─-", Style::new().fg(theme.comment)),
+            Span::styled("❯", Style::new().fg(theme.primary)),
         ]));
         lines.push(Line::raw(""));
         return lines;
     }
 
+    let cwd_str = log.cwd.display().to_string();
     lines.push(Line::from(vec![
-        Span::styled("╭─ ", Style::new().fg(COLOR_COMMENT)),
-        Span::styled("❯ ", Style::new().fg(COLOR_ACCENT)),
+        Span::styled("╭─- ", Style::new().fg(theme.comment)),
+        Span::styled("❯ ", Style::new().fg(theme.accent)),
         Span::styled(
             &log.command,
-            Style::new().fg(COLOR_FG).add_modifier(Modifier::BOLD),
+            Style::new().fg(theme.fg).add_modifier(Modifier::BOLD),
         ),
+        Span::raw("  "),
+        Span::styled("(", Style::new().fg(theme.comment)),
+        Span::styled(
+            cwd_str,
+            Style::new().fg(theme.comment).add_modifier(Modifier::DIM),
+        ),
+        Span::styled(")", Style::new().fg(theme.comment)),
     ]));
 
     if !log.output.is_empty() {
@@ -135,13 +186,13 @@ fn build_log_block(log: &CommandLog) -> Vec<Line<'_>> {
             let content = if let Some(stderr) = output_line.strip_prefix("[stderr] ") {
                 Span::styled(
                     stderr,
-                    Style::new().fg(COLOR_ERROR).add_modifier(Modifier::ITALIC),
+                    Style::new().fg(theme.error).add_modifier(Modifier::ITALIC),
                 )
             } else {
-                Span::raw(output_line).fg(COLOR_FG)
+                Span::raw(output_line).fg(theme.fg)
             };
             lines.push(Line::from(vec![
-                Span::styled("│  ", Style::new().fg(COLOR_COMMENT)),
+                Span::styled("│  ", Style::new().fg(theme.comment)),
                 content,
             ]));
         }
@@ -149,19 +200,45 @@ fn build_log_block(log: &CommandLog) -> Vec<Line<'_>> {
 
     if log.is_running {
         lines.push(Line::from(vec![
-            Span::styled("│  ", Style::new().fg(COLOR_COMMENT)),
+            Span::styled("│  ", Style::new().fg(theme.comment)),
             Span::styled(
                 "⚙️  Running...",
                 Style::new()
-                    .fg(COLOR_WARN)
+                    .fg(theme.warn)
                     .add_modifier(Modifier::SLOW_BLINK),
             ),
         ]));
+    } else if log.exit_code.is_some() || log.duration_ms.is_some() {
+        let code_text = log
+            .exit_code
+            .map(|c| format!("exit={}", c))
+            .unwrap_or_else(|| "exit=?".into());
+        let dur_text = log
+            .duration_ms
+            .map(|d| format!("time={}ms", d))
+            .unwrap_or_default();
+        let mut meta = vec![
+            Span::styled("│  ", Style::new().fg(theme.comment)),
+            Span::styled("⏱ ", Style::new().fg(theme.comment)),
+            Span::styled(
+                code_text,
+                if log.exit_code == Some(0) {
+                    Style::new().fg(Color::Green)
+                } else {
+                    Style::new().fg(theme.error)
+                },
+            ),
+        ];
+        if !dur_text.is_empty() {
+            meta.push(Span::raw("  "));
+            meta.push(Span::styled(dur_text, Style::new().fg(theme.fg)));
+        }
+        lines.push(Line::from(meta));
     }
 
     lines.push(Line::from(Span::styled(
         "╰─",
-        Style::new().fg(COLOR_COMMENT),
+        Style::new().fg(theme.comment),
     )));
     lines.push(Line::raw(""));
 
@@ -171,19 +248,44 @@ fn build_log_block(log: &CommandLog) -> Vec<Line<'_>> {
 fn render_status_bar(frame: &mut Frame, area: Rect, state: &State) {
     let status_layout =
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
+    let theme = &state.theme;
+    let version = env!("CARGO_PKG_VERSION");
+    let git = state
+        .git_branch
+        .as_deref()
+        .map(|b| format!(" on  {}", b))
+        .unwrap_or_default();
     let brand = Paragraph::new(Line::from(vec![
         Span::styled(
             "[[[ HALO ]]]",
             Style::new()
-                .fg(COLOR_BG)
-                .bg(COLOR_PRIMARY)
+                .fg(theme.bg)
+                .bg(theme.primary)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(" v0.1.0 ", Style::new().fg(COLOR_ACCENT)),
+        Span::styled(
+            format!(" v{}{} ", version, git),
+            Style::new().fg(theme.accent),
+        ),
     ]))
     .alignment(Alignment::Left);
-    let cwd_display = format!("📁 {} ", state.cwd.display());
-    let cwd = Paragraph::new(Span::styled(cwd_display, Style::new())).alignment(Alignment::Right);
+    let total_logs = state.command_log.len();
+    let pos = if state.scroll_offset > 0 {
+        total_logs
+            .saturating_sub(1)
+            .saturating_sub(state.scroll_offset)
+            .saturating_add(1)
+    } else {
+        total_logs
+    };
+    let right_text = Line::from(vec![
+        Span::styled("📁 ", Style::new().fg(theme.comment)),
+        Span::styled(state.cwd.display().to_string(), Style::new().fg(theme.fg)),
+        Span::raw("  |  "),
+        Span::styled("⮝ ", Style::new().fg(theme.comment)),
+        Span::styled(format!("{}/{}", pos, total_logs), Style::new().fg(theme.fg)),
+    ]);
+    let cwd = Paragraph::new(right_text).alignment(Alignment::Right);
     frame.render_widget(brand, status_layout[0]);
     frame.render_widget(cwd, status_layout[1]);
 }
@@ -191,9 +293,14 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &State) {
 fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
     let is_previewing = state.scroll_offset > 0;
 
+    let theme = &state.theme;
     let (text, style, border_style, title_span) = if is_previewing {
-        // The command to preview is now at this robust index.
-        let log_index = state.command_log.len().saturating_sub(state.scroll_offset);
+        // The command to preview is at (len - 1 - scroll_offset), saturating at 0.
+        let log_index = state
+            .command_log
+            .len()
+            .saturating_sub(1)
+            .saturating_sub(state.scroll_offset);
         let command_text = state
             .command_log
             .get(log_index)
@@ -204,11 +311,11 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
                 Span::styled("❯  ", Style::new()),
                 Span::styled(command_text, Style::new()),
             ]),
-            Style::new().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD),
-            Style::new().fg(COLOR_ACCENT),
+            Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
+            Style::new().fg(theme.accent),
             Span::styled(
                 " [[[ HISTORY PREVIEW ]]] ",
-                Style::new().fg(COLOR_PRIMARY).add_modifier(Modifier::BOLD),
+                Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
             ),
         )
     } else {
@@ -216,15 +323,15 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
             Line::from(vec![
                 Span::styled(
                     "❯  ",
-                    Style::new().fg(COLOR_PRIMARY).add_modifier(Modifier::BOLD),
+                    Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(&state.input_buffer, Style::new().fg(COLOR_FG)),
+                Span::styled(&state.input_buffer, Style::new().fg(theme.fg)),
             ]),
             Style::default(),
-            Style::new().fg(COLOR_PRIMARY),
+            Style::new().fg(theme.primary),
             Span::styled(
                 format!("  [[[ {} ]]]  ", state.username),
-                Style::new().fg(COLOR_ACCENT).add_modifier(Modifier::BOLD),
+                Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
             ),
         )
     };
@@ -260,6 +367,7 @@ fn render_completion_popup(frame: &mut Frame, area: Rect, state: &mut State) {
         width: area.width.min(80),
         height,
     };
+    let theme = &state.theme;
     let list = List::new(items)
         .block(
             Block::new()
@@ -267,12 +375,12 @@ fn render_completion_popup(frame: &mut Frame, area: Rect, state: &mut State) {
                 .title_alignment(Alignment::Center)
                 .borders(Borders::ALL)
                 .border_type(BorderType::Double)
-                .border_style(Style::new().fg(COLOR_WARN)),
+                .border_style(Style::new().fg(theme.warn)),
         )
         .highlight_style(
             Style::new()
-                .bg(COLOR_PRIMARY)
-                .fg(COLOR_BG)
+                .bg(theme.primary)
+                .fg(theme.bg)
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("▶ ");

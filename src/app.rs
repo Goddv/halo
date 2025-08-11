@@ -4,6 +4,7 @@ use crate::command::{CommandLog, CommandManager, CommandUpdate};
 use crate::error::AppResult;
 use crate::event::EventHandler;
 use crate::state::State;
+use crate::state::Theme;
 use crate::ui;
 use ratatui::prelude::*;
 use std::path::{Path, PathBuf};
@@ -81,6 +82,10 @@ impl App {
         self.state.add_log_entry(input.clone(), current_cwd);
         if self.state.history.last() != Some(&input) {
             self.state.history.push(input.clone());
+            if let Err(e) = self.state.save_history() {
+                self.state
+                    .append_to_last_log(format!("[history save error] {e}"));
+            }
         }
 
         self.state.input_buffer.clear();
@@ -96,19 +101,87 @@ impl App {
             }
         };
 
-        let cmd = &parts[0];
-        let args = &parts[1..].to_vec();
+        let mut cmd = parts[0].clone();
+        let mut args: Vec<String> = parts[1..].to_vec();
 
         match cmd.as_str() {
             "exit" => self.state.should_quit = true,
-            "cd" => self.handle_cd(args),
+            ":reload" => {
+                self.state.load_config();
+                self.state.append_to_last_log("[config reloaded]".into());
+            }
+            "theme" => {
+                if args.is_empty() {
+                    self.state
+                        .append_to_last_log(format!("theme: {}", self.state.theme_name.clone()));
+                } else if args.get(0).map(|s| s.as_str()) == Some("set") {
+                    if let Some(name) = args.get(1) {
+                        let new = Theme::from_name(name);
+                        self.state.theme = new;
+                        self.state.theme_name = name.clone();
+                        let _ = self.state.save_session();
+                        self.state
+                            .append_to_last_log(format!("[theme set to {}]", name));
+                    } else {
+                        self.state
+                            .append_to_last_log("usage: theme set <name>".into());
+                    }
+                } else {
+                    self.state
+                        .append_to_last_log("usage: theme [set <name>]".into());
+                }
+            }
+            "alias" => {
+                if args.is_empty() {
+                    if self.state.aliases.is_empty() {
+                        self.state.append_to_last_log("(no aliases)".into());
+                    } else {
+                        let mut pairs: Vec<(String, String)> = self
+                            .state
+                            .aliases
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+                        for (k, v) in pairs {
+                            self.state.append_to_last_log(format!("alias {k}='{v}'"));
+                        }
+                    }
+                } else {
+                    self.state
+                        .append_to_last_log("usage: alias  # lists aliases".into());
+                }
+            }
+            "cd" => self.handle_cd(&args),
             "pwd" => self
                 .state
                 .append_to_last_log(self.state.cwd.display().to_string()),
             _ => {
+                // Minimal alias expansion (from halo.toml)
+                if let Some(expanded) = self.state.aliases.get(&cmd) {
+                    let rest = if args.is_empty() {
+                        String::new()
+                    } else {
+                        args.join(" ")
+                    };
+                    let combined = if rest.is_empty() {
+                        expanded.clone()
+                    } else {
+                        format!("{expanded} {rest}")
+                    };
+                    if let Some(new_parts) = shlex::split(&combined) {
+                        if !new_parts.is_empty() {
+                            cmd = new_parts[0].clone();
+                            args = new_parts[1..].to_vec();
+                        }
+                    }
+                }
+
+                // track start time for duration
+                self.state.mark_last_log_started();
                 if let Err(e) = self.command_manager.spawn_command(
-                    cmd,
-                    args,
+                    &cmd,
+                    &args,
                     &self.state.cwd,
                     self.command_update_tx.clone(),
                 ) {
@@ -123,16 +196,13 @@ impl App {
 
     fn handle_cd(&mut self, args: &[String]) {
         let target = args.first().map_or("~", |s| s.as_str());
-        let new_dir = if target == "~" {
-            dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
-        } else {
-            self.state.cwd.join(target)
-        };
+        let new_dir = expand_cd_target(target, &self.state.cwd);
 
         if let Err(e) = std::env::set_current_dir(&new_dir) {
             self.state.append_to_last_log(format!("cd: {e}"));
         } else if let Ok(cwd) = std::env::current_dir() {
             self.state.cwd = cwd;
+            let _ = self.state.save_session();
         }
     }
 
@@ -147,7 +217,7 @@ impl App {
         while let Ok(update) = self.command_update_rx.try_recv() {
             match update {
                 CommandUpdate::NewLine(line) => self.state.append_to_last_log(line),
-                CommandUpdate::Finished => self.state.finish_last_log(),
+                CommandUpdate::Finished(code) => self.state.finish_last_log_with_result(code),
             }
             self.state.needs_redraw = true;
         }
@@ -170,4 +240,21 @@ fn get_git_branch(path: &Path) -> Option<String> {
     let icon = if is_dirty { " " } else { " ✔" }; // nf-fa-warning, nf-fa-check
 
     Some(format!("{shorthand}{icon}"))
+}
+
+fn expand_cd_target(target: &str, cwd: &Path) -> PathBuf {
+    if target == "~" {
+        return dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    }
+    if let Some(rest) = target.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(rest);
+        }
+    }
+    let path = Path::new(target);
+    if path.is_absolute() {
+        PathBuf::from(target)
+    } else {
+        cwd.join(target)
+    }
 }

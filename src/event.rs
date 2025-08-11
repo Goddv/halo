@@ -65,8 +65,8 @@ impl EventHandler {
     }
 
     fn handle_normal_mode_key(&self, key: KeyEvent, app: &mut App) {
-        // CORRECTED: max_scroll allows scrolling to the very first command.
-        let max_scroll = app.state.command_log.len();
+        // Allow scrolling up to the very first command (index 0)
+        let max_scroll = app.state.command_log.len().saturating_sub(1);
         match key.code {
             KeyCode::Char(c) => app.state.insert_char(c),
             KeyCode::Backspace => app.state.backspace(),
@@ -80,18 +80,18 @@ impl EventHandler {
                 app.state.completion_state.start_completion(&input, &cwd);
             }
             KeyCode::PageUp => {
-                app.state.scroll_offset = (app.state.scroll_offset + 5).min(max_scroll)
+                app.state.scroll_offset = (app.state.scroll_offset + 5).min(max_scroll);
             }
             KeyCode::PageDown => {
-                app.state.scroll_offset = app.state.scroll_offset.saturating_sub(5)
+                app.state.scroll_offset = app.state.scroll_offset.saturating_sub(5);
             }
             _ => {}
         }
     }
 
     fn handle_mouse_event(&self, mouse: MouseEvent, app: &mut App) {
-        // CORRECTED: max_scroll allows scrolling to the very first command.
-        let max_scroll = app.state.command_log.len();
+        // Allow scrolling up to the very first command (index 0)
+        let max_scroll = app.state.command_log.len().saturating_sub(1);
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 app.state.scroll_offset = (app.state.scroll_offset + 1).min(max_scroll);
