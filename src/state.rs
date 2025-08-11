@@ -4,6 +4,20 @@ use crate::command::CommandLog;
 use crate::completion::CompletionState;
 use crate::error::AppResult;
 use ratatui::style::Color;
+#[derive(Clone)]
+pub struct UiConfig {
+    pub scrollbar_thumb: String,
+    pub prompt: String,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            scrollbar_thumb: "█".to_string(),
+            prompt: "❯".to_string(),
+        }
+    }
+}
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -23,13 +37,14 @@ pub struct Theme {
 impl Default for Theme {
     fn default() -> Self {
         Self {
-            primary: Color::Rgb(0, 184, 255),
-            accent: Color::Rgb(255, 6, 119),
-            warn: Color::Rgb(255, 255, 0),
-            error: Color::Rgb(255, 85, 85),
-            fg: Color::Rgb(229, 233, 240),
-            bg: Color::Rgb(22, 24, 33),
-            comment: Color::Rgb(76, 86, 106),
+            // Softer, more readable defaults
+            primary: Color::Rgb(100, 181, 255),   // #64B5FF
+            accent: Color::Rgb(255, 64, 160),     // #FF40A0
+            warn: Color::Rgb(231, 217, 140),      // #E7D98C
+            error: Color::Rgb(255, 85, 85),       // #FF5555
+            fg: Color::Rgb(221, 227, 234),        // #DDE3EA
+            bg: Color::Rgb(23, 26, 34),           // #171A22
+            comment: Color::Rgb(90, 100, 115),    // #5A6473
         }
     }
 }
@@ -184,6 +199,7 @@ pub struct State {
     _last_start_time: Option<Instant>,
     pub theme: Theme,
     pub theme_name: String,
+    pub ui: UiConfig,
 }
 
 impl State {
@@ -213,6 +229,7 @@ impl State {
             _last_start_time: None,
             theme: Theme::default(),
             theme_name: "cyber-nord".to_string(),
+            ui: UiConfig::default(),
         };
         state.load_history()?;
         state.load_config();
@@ -327,8 +344,12 @@ impl State {
     pub fn load_config(&mut self) {
         // Read minimal halo.toml from config dir, parse aliases table if present
         if let Some(mut path) = dirs::config_dir() {
-            path.push("halo/halo.toml");
-            if let Ok(text) = fs::read_to_string(path) {
+            // Ensure base dir exists
+            path.push("halo");
+            let _ = fs::create_dir_all(&path);
+            // Config file path
+            path.push("halo.toml");
+            if let Ok(text) = fs::read_to_string(&path) {
                 if let Ok(value) = text.parse::<toml::Value>() {
                     if let Some(aliases) = value.get("aliases").and_then(|v| v.as_table()) {
                         self.aliases = aliases
@@ -343,7 +364,22 @@ impl State {
                         self.theme = Theme::from_table(theme_tbl, self.theme.clone());
                         self.theme_name = "custom".to_string();
                     }
+
+                    if let Some(ui_tbl) = value.get("ui").and_then(|v| v.as_table()) {
+                        if let Some(sym) = ui_tbl.get("scrollbar_thumb").and_then(|v| v.as_str()) {
+                            self.ui.scrollbar_thumb = sym.to_string();
+                        }
+                        if let Some(sym) = ui_tbl.get("prompt").and_then(|v| v.as_str()) {
+                            self.ui.prompt = sym.to_string();
+                        }
+                    }
                 }
+            } else {
+                // Create a starter config with current (softened) defaults
+                let default_cfg = format!(
+                    "# Halo config – created on first run\n# Set a named theme or define [theme] colors.\n# Available names: cyber-nord, dracula, gruvbox-dark, one-dark\n\n# theme = \"cyber-nord\"\n\n[theme]\nprimary = \"#64B5FF\"\naccent  = \"#FF40A0\"\nwarn    = \"#E7D98C\"\nerror   = \"#FF5555\"\nfg      = \"#DDE3EA\"\nbg      = \"#171A22\"\ncomment = \"#5A6473\"\n\n[ui]\nscrollbar_thumb = \"█\"\nprompt = \"❯\"\n\n# [aliases]\n# ll = \"ls -alF\"\n# gs = \"git status\"\n"
+                );
+                let _ = fs::write(&path, default_cfg);
             }
         }
     }

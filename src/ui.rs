@@ -143,7 +143,8 @@ fn render_output_log(frame: &mut Frame, area: Rect, state: &State) {
         // track
         frame.render_widget(Block::new().bg(theme.bg), track_area);
         // thumb
-        let thumb = Paragraph::new(Span::styled("█", Style::new().fg(theme.primary)));
+        let thumb_char = state.ui.scrollbar_thumb.as_str();
+        let thumb = Paragraph::new(Span::styled(thumb_char, Style::new().fg(theme.primary)));
         for y in 0..thumb_h {
             let cell = Rect::new(track_x, thumb_y + y, 1, 1);
             frame.render_widget(thumb.clone(), cell);
@@ -157,7 +158,7 @@ fn build_log_block<'a>(log: &'a CommandLog, theme: &'a Theme) -> Vec<Line<'a>> {
 
     if is_empty_prompt && !log.is_running {
         lines.push(Line::from(vec![
-            Span::styled("╭─-", Style::new().fg(theme.comment)),
+            Span::styled("╭───", Style::new().fg(theme.comment)),
             Span::styled("❯", Style::new().fg(theme.primary)),
         ]));
         lines.push(Line::raw(""));
@@ -166,7 +167,7 @@ fn build_log_block<'a>(log: &'a CommandLog, theme: &'a Theme) -> Vec<Line<'a>> {
 
     let cwd_str = log.cwd.display().to_string();
     lines.push(Line::from(vec![
-        Span::styled("╭─- ", Style::new().fg(theme.comment)),
+        Span::styled("╭───", Style::new().fg(theme.comment)),
         Span::styled("❯ ", Style::new().fg(theme.accent)),
         Span::styled(
             &log.command,
@@ -257,7 +258,7 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &State) {
         .unwrap_or_default();
     let brand = Paragraph::new(Line::from(vec![
         Span::styled(
-            "[[[ HALO ]]]",
+            " HALO ",
             Style::new()
                 .fg(theme.bg)
                 .bg(theme.primary)
@@ -279,11 +280,11 @@ fn render_status_bar(frame: &mut Frame, area: Rect, state: &State) {
         total_logs
     };
     let right_text = Line::from(vec![
-        Span::styled("📁 ", Style::new().fg(theme.comment)),
-        Span::styled(state.cwd.display().to_string(), Style::new().fg(theme.fg)),
+        Span::styled("📁 ", Style::new().fg(theme.accent)),
+        Span::styled(state.cwd.display().to_string(), Style::new().fg(theme.accent)),
         Span::raw("  |  "),
-        Span::styled("⮝ ", Style::new().fg(theme.comment)),
-        Span::styled(format!("{}/{}", pos, total_logs), Style::new().fg(theme.fg)),
+        Span::styled("📄 ", Style::new().fg(theme.accent)),
+        Span::styled(format!("{}/{}", pos, total_logs), Style::new().fg(theme.accent)),
     ]);
     let cwd = Paragraph::new(right_text).alignment(Alignment::Right);
     frame.render_widget(brand, status_layout[0]);
@@ -308,31 +309,25 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
 
         (
             Line::from(vec![
-                Span::styled("❯  ", Style::new()),
+                Span::styled(format!("{}  ", state.ui.prompt), Style::new()),
                 Span::styled(command_text, Style::new()),
             ]),
             Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
             Style::new().fg(theme.accent),
-            Span::styled(
-                " [[[ HISTORY PREVIEW ]]] ",
-                Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
-            ),
+            build_decorated_title("[[[ HISTORY PREVIEW ]]]".to_string(), theme),
         )
     } else {
         (
             Line::from(vec![
                 Span::styled(
-                    "❯  ",
+                    format!("{}  ", state.ui.prompt),
                     Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(&state.input_buffer, Style::new().fg(theme.fg)),
             ]),
             Style::default(),
             Style::new().fg(theme.primary),
-            Span::styled(
-                format!("  [[[ {} ]]]  ", state.username),
-                Style::new().fg(theme.accent).add_modifier(Modifier::BOLD),
-            ),
+            build_decorated_title(format!("[[[ {} ]]]", state.username), theme),
         )
     };
 
@@ -345,6 +340,14 @@ fn render_input_box(frame: &mut Frame, area: Rect, state: &State) {
     );
 
     frame.render_widget(input_paragraph, area);
+}
+
+fn build_decorated_title(inner: String, theme: &Theme) -> Line<'static> {
+    const DECOR: &str = "───────────────────"; // fixed-length decoration
+    let left = Span::styled(DECOR.to_string(), Style::new().fg(theme.primary));
+    //let space = Span::raw(" ".to_string());
+    let title = Span::styled(inner, Style::new().fg(theme.accent).add_modifier(Modifier::BOLD));
+    Line::from(vec![left, title])
 }
 
 fn render_completion_popup(frame: &mut Frame, area: Rect, state: &mut State) {
