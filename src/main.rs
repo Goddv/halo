@@ -6,6 +6,7 @@ mod completion;
 mod error;
 mod event;
 mod state;
+mod themes;
 mod ui;
 
 use app::App;

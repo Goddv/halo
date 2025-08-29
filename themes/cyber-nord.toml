@@ -1,0 +1,9 @@
+# Cyber-Nord Theme (Default)
+primary = "#64B5FF"
+accent = "#FF40A0"
+warn = "#E7D98C"
+error = "#FF5555"
+success = "#64B5FF"
+fg = "#DDE3EA"
+bg = "#171A22"
+comment = "#5A6473"

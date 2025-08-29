@@ -1,0 +1,9 @@
+# Nord Theme
+primary = "#88C0D0"
+accent = "#ECEFF4"
+warn = "#EBCB8B"
+error = "#BF616A"
+success = "#88C0D0"
+fg = "#ECEFF4"
+bg = "#2E3440"
+comment = "#88C0D0"

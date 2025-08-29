@@ -3,6 +3,7 @@
 use crate::command::CommandLog;
 use crate::completion::CompletionState;
 use crate::error::AppResult;
+use crate::themes;
 use ratatui::style::Color;
 #[derive(Clone)]
 pub struct UiConfig {
@@ -20,7 +21,7 @@ impl Default for UiConfig {
 }
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::time::Instant;
 #[derive(Clone)]
@@ -29,6 +30,7 @@ pub struct Theme {
     pub accent: Color,
     pub warn: Color,
     pub error: Color,
+    pub success: Color,
     pub fg: Color,
     pub bg: Color,
     pub comment: Color,
@@ -42,6 +44,7 @@ impl Default for Theme {
             accent: Color::Rgb(255, 64, 160),     // #FF40A0
             warn: Color::Rgb(231, 217, 140),      // #E7D98C
             error: Color::Rgb(255, 85, 85),       // #FF5555
+            success: Color::Rgb(100, 181, 255),   // #64B5FF
             fg: Color::Rgb(221, 227, 234),        // #DDE3EA
             bg: Color::Rgb(23, 26, 34),           // #171A22
             comment: Color::Rgb(90, 100, 115),    // #5A6473
@@ -124,6 +127,11 @@ impl Theme {
                 t.error = c;
             }
         }
+        if let Some(v) = tbl.get("success").and_then(|v| v.as_str()) {
+            if let Some(c) = Self::parse_color(v) {
+                t.success = c;
+            }
+        }
         if let Some(v) = tbl.get("fg").and_then(|v| v.as_str()) {
             if let Some(c) = Self::parse_color(v) {
                 t.fg = c;
@@ -151,6 +159,7 @@ impl Theme {
                 accent: Color::Rgb(255, 121, 198),
                 warn: Color::Rgb(241, 250, 140),
                 error: Color::Rgb(255, 85, 85),
+                success: Color::Rgb(98, 114, 164),
                 fg: Color::Rgb(248, 248, 242),
                 bg: Color::Rgb(40, 42, 54),
                 comment: Color::Rgb(98, 114, 164),
@@ -160,6 +169,7 @@ impl Theme {
                 accent: Color::Rgb(204, 36, 29),
                 warn: Color::Rgb(250, 189, 47),
                 error: Color::Rgb(204, 36, 29),
+                success: Color::Rgb(250, 189, 47),
                 fg: Color::Rgb(235, 219, 178),
                 bg: Color::Rgb(29, 32, 33),
                 comment: Color::Rgb(146, 131, 116),
@@ -169,6 +179,7 @@ impl Theme {
                 accent: Color::Rgb(198, 120, 221),
                 warn: Color::Rgb(229, 192, 123),
                 error: Color::Rgb(224, 108, 117),
+                success: Color::Rgb(97, 175, 239),
                 fg: Color::Rgb(171, 178, 191),
                 bg: Color::Rgb(40, 44, 52),
                 comment: Color::Rgb(92, 99, 112),
@@ -200,6 +211,10 @@ pub struct State {
     pub theme: Theme,
     pub theme_name: String,
     pub ui: UiConfig,
+    // Theme selection mode
+    pub theme_selection_mode: bool,
+    pub available_themes: Vec<String>,
+    pub theme_selection_index: usize,
 }
 
 impl State {
@@ -230,6 +245,10 @@ impl State {
             theme: Theme::default(),
             theme_name: "cyber-nord".to_string(),
             ui: UiConfig::default(),
+            // Theme selection mode
+            theme_selection_mode: false,
+            available_themes: Vec::new(),
+            theme_selection_index: 0,
         };
         state.load_history()?;
         state.load_config();
@@ -323,7 +342,7 @@ impl State {
     pub fn load_history(&mut self) -> AppResult<()> {
         if let Some(path) = Self::history_path() {
             if let Ok(file) = fs::File::open(&path) {
-                let reader = io::BufReader::new(file);
+                let reader = BufReader::new(file);
                 self.history = serde_json::from_reader(reader).unwrap_or_default();
             }
         }
@@ -358,7 +377,10 @@ impl State {
                             .collect();
                     }
                     if let Some(theme_name) = value.get("theme").and_then(|v| v.as_str()) {
-                        self.theme = Theme::from_name(theme_name);
+                        if !self.load_theme_from_file(theme_name) {
+                            // Fallback to built-in theme if file not found
+                            self.theme = Theme::from_name(theme_name);
+                        }
                         self.theme_name = theme_name.to_string();
                     } else if let Some(theme_tbl) = value.get("theme").and_then(|v| v.as_table()) {
                         self.theme = Theme::from_table(theme_tbl, self.theme.clone());
@@ -382,6 +404,11 @@ impl State {
                 let _ = fs::write(&path, default_cfg);
             }
         }
+        
+        // Extract themes from archive if needed
+        if let Err(e) = themes::extract_themes_if_needed() {
+            eprintln!("Warning: Failed to extract themes: {}", e);
+        }
     }
 
     fn session_path() -> Option<std::path::PathBuf> {
@@ -394,7 +421,7 @@ impl State {
     pub fn load_session(&mut self) -> AppResult<()> {
         if let Some(path) = Self::session_path() {
             if let Ok(file) = fs::File::open(&path) {
-                let reader = io::BufReader::new(file);
+                let reader = BufReader::new(file);
                 #[derive(Deserialize)]
                 struct Session {
                     last_cwd: String,
@@ -437,4 +464,111 @@ impl State {
         }
         Ok(())
     }
+
+
+
+    pub fn get_available_themes(&self) -> Vec<String> {
+        let mut themes = Vec::new();
+        
+        if let Some(mut themes_dir) = dirs::config_dir() {
+            themes_dir.push("halo/themes");
+            if let Ok(entries) = fs::read_dir(themes_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    if let Some(extension) = entry.path().extension() {
+                        if extension == "toml" {
+                            if let Some(stem) = entry.path().file_stem() {
+                                if let Some(name) = stem.to_str() {
+                                    themes.push(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        themes.sort();
+        themes
+    }
+
+    pub fn load_theme_from_file(&mut self, theme_name: &str) -> bool {
+        if let Some(mut theme_path) = dirs::config_dir() {
+            theme_path.push(format!("halo/themes/{}.toml", theme_name));
+            
+            if let Ok(content) = fs::read_to_string(theme_path) {
+                if let Ok(value) = content.parse::<toml::Value>() {
+                    if let Some(theme_tbl) = value.as_table() {
+                        self.theme = Theme::from_table(theme_tbl, Theme::default());
+                        self.theme_name = theme_name.to_string();
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    pub fn enter_theme_selection_mode(&mut self) {
+        self.theme_selection_mode = true;
+        self.available_themes = self.get_available_themes();
+        self.theme_selection_index = 0;
+        self.needs_redraw = true;
+    }
+
+    pub fn exit_theme_selection_mode(&mut self) {
+        self.theme_selection_mode = false;
+        self.available_themes.clear();
+        self.theme_selection_index = 0;
+        self.needs_redraw = true;
+    }
+
+    pub fn select_theme_up(&mut self) {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            self.theme_selection_index = self.theme_selection_index.saturating_sub(1);
+            self.preview_selected_theme();
+            self.needs_redraw = true;
+        }
+    }
+
+    pub fn select_theme_down(&mut self) {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            self.theme_selection_index = (self.theme_selection_index + 1) % self.available_themes.len();
+            self.preview_selected_theme();
+            self.needs_redraw = true;
+        }
+    }
+
+    pub fn confirm_theme_selection(&mut self) -> bool {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            let theme_name = self.available_themes[self.theme_selection_index].clone();
+            if self.load_theme_from_file(&theme_name) {
+                self.theme_name = theme_name;
+                let _ = self.save_session();
+                self.exit_theme_selection_mode();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn preview_selected_theme(&mut self) {
+        if self.theme_selection_mode && !self.available_themes.is_empty() {
+            if let Some(theme_name) = self.available_themes.get(self.theme_selection_index) {
+                // Temporarily load the theme for preview without changing the theme_name
+                if let Some(mut theme_path) = dirs::config_dir() {
+                    theme_path.push(format!("halo/themes/{}.toml", theme_name));
+                    
+                    if let Ok(content) = fs::read_to_string(theme_path) {
+                        if let Ok(value) = content.parse::<toml::Value>() {
+                            if let Some(theme_tbl) = value.as_table() {
+                                self.theme = Theme::from_table(theme_tbl, Theme::default());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
 }

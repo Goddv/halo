@@ -1,0 +1,9 @@
+# Monokai Theme
+primary = "#66D9EF"
+accent = "#F92672"
+warn = "#E6DB74"
+error = "#F92672"
+success = "#66D9EF"
+fg = "#F8F8F2"
+bg = "#272822"
+comment = "#75715E"

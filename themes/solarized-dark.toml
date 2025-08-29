@@ -1,0 +1,9 @@
+# Solarized Dark Theme
+primary = "#268BD2"
+accent = "#6C71C4"
+warn = "#B58900"
+error = "#DC322F"
+success = "#268BD2"
+fg = "#839496"
+bg = "#002B36"
+comment = "#586E75"

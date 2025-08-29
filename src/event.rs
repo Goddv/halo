@@ -33,7 +33,9 @@ impl EventHandler {
             app.state.exit_preview_mode();
         }
 
-        if app.state.completion_state.active {
+        if app.state.theme_selection_mode {
+            self.handle_theme_selection_key(key, app);
+        } else if app.state.completion_state.active {
             self.handle_completion_mode_key(key, app);
         } else {
             self.handle_normal_mode_key(key, app);
@@ -61,6 +63,23 @@ impl EventHandler {
                 app.state.completion_state.stop_completion();
                 self.handle_normal_mode_key(key, app);
             }
+        }
+    }
+
+    fn handle_theme_selection_key(&self, key: KeyEvent, app: &mut App) {
+        match key.code {
+            KeyCode::Up => app.state.select_theme_up(),
+            KeyCode::Down => app.state.select_theme_down(),
+            KeyCode::Enter => {
+                if app.state.confirm_theme_selection() {
+                    app.state.append_to_last_log(format!("[theme set to {}]", app.state.theme_name));
+                }
+            }
+            KeyCode::Esc => {
+                app.state.exit_theme_selection_mode();
+                app.state.append_to_last_log("[theme selection cancelled]".into());
+            }
+            _ => {}
         }
     }
 

@@ -31,6 +31,10 @@ pub fn draw(frame: &mut Frame, state: &mut State) {
         render_completion_popup(frame, main_layout[2], state);
     }
 
+    if state.theme_selection_mode {
+        render_theme_selection_popup(frame, state);
+    }
+
     if state.scroll_offset == 0 {
         let input_block = Block::default().borders(Borders::ALL);
         let inner_area = input_block.inner(main_layout[2]);
@@ -402,4 +406,74 @@ fn render_completion_popup(frame: &mut Frame, area: Rect, state: &mut State) {
         ListState::default().with_selected(Some(state.completion_state.selected_index));
     frame.render_widget(Clear, popup_area);
     frame.render_stateful_widget(list, popup_area, &mut list_state);
+}
+
+fn render_theme_selection_popup(frame: &mut Frame, state: &State) {
+    let theme = &state.theme;
+    let popup_width = 50;
+    let popup_height = state.available_themes.len().min(15) as u16 + 4; // +4 for title and borders
+    
+    let popup_area = centered_rect(popup_width, popup_height, frame.area());
+    
+    // Create theme list items
+    let mut items = Vec::new();
+    for (i, theme_name) in state.available_themes.iter().enumerate() {
+        let is_selected = i == state.theme_selection_index;
+        let style = if is_selected {
+            Style::new()
+                .fg(theme.bg)
+                .bg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(theme.fg)
+        };
+        
+        let item_text = if is_selected {
+            format!("▶ {}", theme_name)
+        } else {
+            format!("  {}", theme_name)
+        };
+        
+        items.push(ListItem::new(item_text).style(style));
+    }
+    
+    let theme_list = List::new(items)
+        .block(
+            Block::default()
+                .title(Span::styled(
+                    " Select Theme ",
+                    Style::new().fg(theme.primary).add_modifier(Modifier::BOLD),
+                ))
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::new().fg(theme.accent))
+        )
+        .style(Style::new().bg(theme.bg).fg(theme.fg));
+    
+    // Render background overlay
+    let overlay = Block::default()
+        .style(Style::new().bg(Color::Black).fg(Color::Black));
+    frame.render_widget(overlay, frame.area());
+    
+    frame.render_widget(theme_list, popup_area);
+}
+
+fn centered_rect(percent_x: u16, height: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length((r.height.saturating_sub(height)) / 2),
+            Constraint::Length(height),
+            Constraint::Min(0),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }

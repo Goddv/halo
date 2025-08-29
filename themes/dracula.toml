@@ -1,0 +1,9 @@
+# Dracula Theme
+primary = "#6272A4"
+accent = "#FF79C6"
+warn = "#F1FA8C"
+error = "#FF5555"
+success = "#6272A4"
+fg = "#F8F8F2"
+bg = "#282A36"
+comment = "#6272A4"

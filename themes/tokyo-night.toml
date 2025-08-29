@@ -1,0 +1,9 @@
+# Tokyo Night Theme
+primary = "#7AA2F7"
+accent = "#BB9AF7"
+warn = "#FFDA77"
+error = "#F7768E"
+success = "#7AA2F7"
+fg = "#A9B1D6"
+bg = "#1A1B26"
+comment = "#6567A3"

@@ -4,7 +4,6 @@ use crate::command::{CommandLog, CommandManager, CommandUpdate};
 use crate::error::AppResult;
 use crate::event::EventHandler;
 use crate::state::State;
-use crate::state::Theme;
 use crate::ui;
 use ratatui::prelude::*;
 use std::path::{Path, PathBuf};
@@ -116,19 +115,31 @@ impl App {
                         .append_to_last_log(format!("theme: {}", self.state.theme_name.clone()));
                 } else if args.get(0).map(|s| s.as_str()) == Some("set") {
                     if let Some(name) = args.get(1) {
-                        let new = Theme::from_name(name);
-                        self.state.theme = new;
-                        self.state.theme_name = name.clone();
-                        let _ = self.state.save_session();
-                        self.state
-                            .append_to_last_log(format!("[theme set to {}]", name));
+                        if self.state.load_theme_from_file(name) {
+                            let _ = self.state.save_session();
+                            self.state.append_to_last_log(format!("[theme set to {}]", name));
+                        } else {
+                            self.state.append_to_last_log(format!("[error: theme '{}' not found]", name));
+                        }
                     } else {
-                        self.state
-                            .append_to_last_log("usage: theme set <name>".into());
+                        // Enter interactive theme selection mode
+                        self.state.enter_theme_selection_mode();
+                        self.state.append_to_last_log("Theme selection mode - use ↑/↓ to navigate, Enter to select, Esc to cancel".into());
+                    }
+                } else if args.get(0).map(|s| s.as_str()) == Some("list") {
+                    let themes = self.state.get_available_themes();
+                    self.state.append_to_last_log("Available themes:".into());
+                    for theme in themes {
+                        self.state.append_to_last_log(format!("  {}", theme));
+                    }
+                } else if args.get(0).map(|s| s.as_str()) == Some("refresh") {
+                    if let Err(e) = crate::themes::refresh_themes() {
+                        self.state.append_to_last_log(format!("[error: failed to refresh themes: {}]", e));
+                    } else {
+                        self.state.append_to_last_log("[themes refreshed successfully]".into());
                     }
                 } else {
-                    self.state
-                        .append_to_last_log("usage: theme [set <name>]".into());
+                    self.state.append_to_last_log("usage: theme [set <name> | list | refresh]".into());
                 }
             }
             "alias" => {

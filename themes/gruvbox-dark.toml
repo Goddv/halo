@@ -1,0 +1,9 @@
+# Gruvbox Dark Theme
+primary = "#FABD2F"
+accent = "#CC241D"
+warn = "#FABD2F"
+error = "#CC241D"
+success = "#FABD2F"
+fg = "#EBDBB2"
+bg = "#1D2021"
+comment = "#928374"

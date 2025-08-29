@@ -1,0 +1,9 @@
+# One Dark Theme
+primary = "#61AFEF"
+accent = "#C678DD"
+warn = "#E5C07B"
+error = "#E06C75"
+success = "#61AFEF"
+fg = "#ABB2BF"
+bg = "#282C34"
+comment = "#5C6370"
